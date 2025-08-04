@@ -197,6 +197,30 @@ Version: 2020-04-16
 ### FREEZE_VERSION
 Previously this property was only checked by the `rpi-eeprom-update` script. However, now that self-update is enabled the bootloader will also check this property. If set to 1, this overrides `ENABLE_SELF_UPDATE` to stop automatic updates. To disable `FREEZE_VERSION` you will have to use an SD card boot with recovery.bin.
 
+### SDRAM_BANKLOW
+SDRAM_BANKLOW controls how the SDRAM banks are arranged within the system address space. The bank bits may be mapped to fixed address bits in the mid part of the address, between row and column address bits, or in the MSBs of the address:
+This setting can significantly affect SDRAM performance.
+
+When set to 0 the bootloader will chose the preferred option. This is currently 3 on Pi 4 family and 1 on Pi 5 family.
+
+|BANKLOW|	Address Bit Mapping                           |
+|-------|-----------------------------------------------|
+|  0 	  | Address = {bank[3:0], row, column}            |
+|  1 	  | Address = {bank[3:1], row, bank[0], column}   |
+|  2 	  | Address = {bank[3:2], row, bank[1:0], column} |
+|  3 	  | Address = {bank[3], row, bank[2:0], column}   |
+|  4 	  | Address = {row, bank[3:0], column}            |
+
+This setting also causes the bootloader to add a setting for the number of NUMA regions to be used by the kernel ("numa=fake=<n>").
+For best performance these settings should be left as default.
+
+Note: on a Pi 5 family device, if NUMA is not available in the kernel then performance will be adversely affected.
+Manually choosing SDRAM_BANKLOW=3 will mitigate this performance hit, although for highest performance, ensure NUMA is available.
+
+Default: `0`  
+Version: All  
+
+
 **Custom EEPROM update scripts must also check this flag.**
 
 Default: `0`  
