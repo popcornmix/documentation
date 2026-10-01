@@ -48,6 +48,8 @@ include::raspberry-pi/power-supplies.adoc[]
 
 include::raspberry-pi/rtc.adoc[]
 
+include::raspberry-pi/wake-sources.adoc[]
+
 include::raspberry-pi/spi-bus-on-raspberry-pi.adoc[]
 
 include::raspberry-pi/usb-bus-on-raspberry-pi.adoc[]

@@ -1,0 +1,163 @@
+== HDMI and CEC wake sources
+
+NOTE: This section only applies to Raspberry Pi 5 and newer devices.
+
+After the board is suspended, with `sudo systemctl suspend` or from the power options of the desktop, the HDMI hotplug and CEC detectors remain powered. They can be configured to wake the board, so that plugging in a display, switching a TV on, or pressing the power key on a TV remote resumes the system.
+
+Three 32-bit values control which events wake the board. In each of them the bottom 16 bits are the settings for HDMI0, and the top 16 bits are the settings for HDMI1.
+
+=== `WAKE_SOURCES`
+
+A bitmask selecting the events which wake the board:
+
+[cols="1m,2,3"]
+|===
+| Bit | Source | Description
+
+| 0
+| HPD attach
+| A display is connected, or an attached display is switched on.
+
+| 1
+| HPD detach
+| A display is disconnected, or an attached display is switched off.
+
+| 2
+| `<Set Stream Path>` to our physical address
+| A TV selects this board as its input source.
+
+| 3
+| `<Set Stream Path>` to our AVR
+| A TV selects the AVR this board is connected through. Only useful when the board is not connected directly to the TV.
+
+| 4
+| `<User Control Pressed>` power
+| The power key on the TV remote, when the TV sends it to this board.
+
+| 5
+| Any message addressed to us
+| Any CEC message directed at this board's logical address.
+
+| 6
+| Reply to `<Give Device Power Status>`
+| Not a wake source. While suspended, answer `<Give Device Power Status>` with `<Report Power Status>` `Standby`, so that the TV continues to list this board as an input.
+|===
+
+=== `WAKE_CEC_PA`
+
+The CEC physical address of this board, as a 16-bit value per HDMI port: `0x1000` is physical address 1.0.0.0.
+
+The physical address is derived from the EDID of the display, so it depends on which HDMI input the board is plugged into, and on any AVR in between. It can be read from the running system with `cec-ctl`:
+
+[source,console]
+----
+cec-ctl -d /dev/cec0 | grep "Physical Address"
+#	Physical Address           : 1.0.0.0
+----
+
+Bit 2 of `WAKE_SOURCES` matches `<Set Stream Path>` carrying this address. Bit 3 matches the address of the parent device, which is this address with the lowest non-zero digit cleared: for 1.1.0.0 the parent is 1.0.0.0. A board connected directly to the TV has no parent other than the TV itself, so bit 3 has no effect.
+
+A physical address of `0x0000` or `0xffff` disables the CEC wake sources, since no message can match it.
+
+=== `WAKE_CEC_LA`
+
+The CEC logical address of this board, as a 16-bit value per HDMI port. `4` is Playback Device 1, which is the address a Raspberry Pi normally claims.
+
+The logical address is claimed by Linux, and only while something has `/dev/cecN` open. With nothing using CEC, the address reverts to `15` (unregistered), which stops CEC reception altogether. It can be read with `cec-ctl`:
+
+[source,console]
+----
+cec-ctl -d /dev/cec0 | grep "Logical Address "
+#	  Logical Address          : 4 (Playback Device 1)
+----
+
+=== Setting the wake sources in the bootloader configuration
+
+The three values can be set as bootloader configuration properties, in which case they are applied at every boot:
+
+[source,console]
+----
+sudo -E rpi-eeprom-config --edit
+----
+
+For a board connected directly to the first HDMI input of a TV, waking on hotplug, on the TV selecting this board as its input, and on the power key of the TV remote:
+
+[source,ini]
+----
+WAKE_SOURCES=0x00150015
+WAKE_CEC_PA=0x10001000
+WAKE_CEC_LA=0x00040004
+----
+
+See xref:raspberry-pi.adoc#WAKE_SOURCES[`WAKE_SOURCES`], xref:raspberry-pi.adoc#WAKE_CEC_PA[`WAKE_CEC_PA`] and xref:raspberry-pi.adoc#WAKE_CEC_LA[`WAKE_CEC_LA`].
+
+=== Setting the wake sources at run time
+
+The same three values can be set through the mailbox interface, which overrides the values loaded from the bootloader configuration until the next reboot. This is useful because the physical and logical addresses are only known to the running system.
+
+The value words are passed in the order `WAKE_SOURCES`, `WAKE_CEC_LA`, `WAKE_CEC_PA`.
+
+Setting the wake sources via vcmailbox:
+
+[source,console]
+----
+sudo vcmailbox 0x0003809d 12 12 0x00150015 0x00040004 0x10001000
+----
+
+Reading the wake sources via vcmailbox:
+
+[source,console]
+----
+sudo vcmailbox 0x0003009d 12 12 0 0 0
+# Example output - WAKE_SOURCES is 0x00150015, WAKE_CEC_LA is 0x00040004 and WAKE_CEC_PA is 0x10001000
+# 0x00000024 0x80000000 0x0003009d 0x0000000c 0x8000000c 0x00150015 0x00040004 0x10001000 0x00000000
+----
+
+The values are read by the firmware on the way into suspend, so they must be set before suspending.
+
+=== Recognised CEC messages
+
+A CEC wake source only fires on an exact match against `WAKE_CEC_LA` and `WAKE_CEC_PA`, so a stale address silently stops the board waking.
+
+With `WAKE_CEC_LA=4` and `WAKE_CEC_PA=0x1000`, these messages from a TV at logical address 0 wake the board:
+
+----
+Initiator 0, Destination 4, Op Code 44, Data Len 1, Data [6d]      <User Control Pressed> <power on>
+Initiator 0, Destination 4, Op Code 44, Data Len 1, Data [6b]      <User Control Pressed> <power toggle>
+Initiator 0, Destination F, Op Code 86, Data Len 2, Data [10,00]   <Set Stream Path> ours
+----
+
+`<User Control Pressed>` is matched on the power on and power toggle key codes only, and only when the message is addressed to this board; other remote keys do not wake it.
+
+With the board behind an AVR, at physical address 1.1.0.0 (`WAKE_CEC_PA=0x1100`), a TV switching to the AVR's input sends the AVR's address rather than ours, which bit 3 matches:
+
+----
+Initiator 0, Destination F, Op Code 86, Data Len 2, Data [11,00]   <Set Stream Path> ours
+Initiator 0, Destination F, Op Code 86, Data Len 2, Data [10,00]   <Set Stream Path> our AVR
+----
+
+Messages which do not match are ignored, and the board stays suspended:
+
+----
+Initiator 0, Destination F, Op Code 86, Data Len 2, Data [30,00]   <Set Stream Path> elsewhere
+Initiator 0, Destination F, Op Code 36, Data Len 0                 <Standby>
+Initiator 0, Destination 4, Op Code 8F, Data Len 0                 <Give Device Power Status>
+----
+
+`<Give Device Power Status>` is still acknowledged, and with bit 6 set it is answered with `<Report Power Status>` `Standby` without waking the board:
+
+----
+Initiator 4, Destination 0, Op Code 90, Data Len 1, Data [01]      <Report Power Status> <standby>
+----
+
+Bit 5 wakes the board on any message addressed to it, including `<Give Device Power Status>`, which a TV may poll regularly. It is rarely what is wanted alongside bit 6.
+
+=== Compatibility with displays
+
+Both halves of this are at the discretion of the display manufacturer, and neither is consistent between devices.
+
+Hotplug is a signal from the display, and when it is deasserted is a design decision: some televisions drop hotplug when they are put into standby or when another input is selected, and others hold it asserted for as long as they have power. On the latter, a wake on HPD attach never fires.
+
+Which CEC messages a television sends, and when, varies just as much. A television may select an input with `<Set Stream Path>`, or send nothing at all; it may pass the power key of its remote to the selected device, or handle it entirely itself; and some send messages only to devices they have previously discovered.
+
+So whether a given wake source is useful depends on the display it is connected to. It is worth confirming, with the display in question, that the messages expected are actually sent before relying on a particular wake source.

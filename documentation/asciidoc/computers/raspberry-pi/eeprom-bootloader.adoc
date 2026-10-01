@@ -71,6 +71,39 @@ If this property and `POWER_OFF_ON_HALT` are both set to `1` then the bootloader
 
 Default: `0`
 
+[[WAKE_SOURCES]]
+==== `WAKE_SOURCES`
+
+Raspberry Pi 5 and newer devices only.
+
+A bitmask of the HDMI hotplug and CEC events which wake the board from suspend. The bottom 16 bits are the settings for HDMI0 and the top 16 bits the settings for HDMI1.
+
+See xref:raspberry-pi.adoc#hdmi-and-cec-wake-sources[HDMI and CEC wake sources] for the meaning of each bit.
+
+Default: `0`
+
+[[WAKE_CEC_PA]]
+==== `WAKE_CEC_PA`
+
+Raspberry Pi 5 and newer devices only.
+
+The CEC physical address to match while suspended, as a 16-bit value per HDMI port: `0x10001000` is physical address 1.0.0.0 on both ports.
+
+The physical address is derived from the EDID of the display, so it depends on which HDMI input the board is plugged into. See xref:raspberry-pi.adoc#hdmi-and-cec-wake-sources[HDMI and CEC wake sources].
+
+Default: `0`
+
+[[WAKE_CEC_LA]]
+==== `WAKE_CEC_LA`
+
+Raspberry Pi 5 and newer devices only.
+
+The CEC logical address to match while suspended, as a 16-bit value per HDMI port: `0x00040004` is logical address 4, Playback Device 1, on both ports.
+
+The logical address is claimed by Linux while CEC is in use, so it is normally set at run time rather than here. See xref:raspberry-pi.adoc#hdmi-and-cec-wake-sources[HDMI and CEC wake sources].
+
+Default: `0`
+
 [[BOOT_ORDER]]
 ==== `BOOT_ORDER`
 
